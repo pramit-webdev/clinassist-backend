@@ -27,50 +27,19 @@ class ICD10RAG:
         return [d.embedding for d in resp.data]
 
     def build_from_csv(self, csv_path):
-    import pandas as pd
-    import re
+        # Read ICD-10 file using whitespace splitting
+        df = pd.read_csv(csv_path, sep=r"\s+", engine="python", header=None)
 
-    # Read file using any whitespace as separator
-    df = pd.read_csv(csv_path, sep=r"\s+", engine="python", header=None)
+        rows = []
+        for _, row in df.iterrows():
+            if len(row) < 4:
+                continue
 
-    # We expect at least 4 columns:
-    # 0 = chapter
-    # 1 = order
-    # 2 = ICD code
-    # 3 = description (may include spaces)
+            code = str(row[2]).strip()
+            desc = str(row[3]).strip()
 
-    rows = []
-    for _, row in df.iterrows():
-        if len(row) < 4:
-            continue
-
-        code = str(row[2]).strip()
-        desc = str(row[3]).strip()
-
-        if code and desc:
-            rows.append(f"{code} - {desc}")
-
-    vectors = self.embed(rows)
-
-    self.index.add(np.array(vectors, dtype="float32"))
-    self.texts = rows
-
-    faiss.write_index(self.index, self.index_file)
-    np.save(self.texts_file, np.array(self.texts, dtype=object))
-        # Your file is tab-separated with no header
-        df = pd.read_csv(csv_path, sep="\t", header=None)
-
-        # Column meaning from your sample:
-        # 0 = category
-        # 1 = order
-        # 2 = ICD code (A000, A001…)
-        # 3 = long description
-
-        rows = [
-            f"{row[2]} - {row[3]}"
-            for _, row in df.iterrows()
-            if str(row[2]).strip() != "" and str(row[3]).strip() != ""
-        ]
+            if code and desc:
+                rows.append(f"{code} - {desc}")
 
         vectors = self.embed(rows)
 
