@@ -26,7 +26,33 @@ class ICD10RAG:
         )
         return [d.embedding for d in resp.data]
 
-    def build_from_csv(self, csv_path):
+def build_from_csv(self, csv_path):
+    import pandas as pd
+
+    # Read tab-separated ICD-10 file
+    df = pd.read_csv(csv_path, sep="\t", header=None)
+
+    # Expected format:
+    # 0 = chapter
+    # 1 = order
+    # 2 = ICD code (A000, A001, etc)
+    # 3 = long description
+    # 4 = short description
+    # 5 = category
+
+    rows = [
+        f"{row[2]} - {row[3]}"
+        for _, row in df.iterrows()
+        if str(row[2]).strip() != "" and str(row[3]).strip() != ""
+    ]
+
+    vectors = self.embed(rows)
+
+    self.index.add(np.array(vectors, dtype="float32"))
+    self.texts = rows
+
+    faiss.write_index(self.index, self.index_file)
+    np.save(self.texts_file, np.array(self.texts, dtype=object))
         df = pd.read_csv(csv_path)
         rows = [f"{r['Code']} - {r['Description']}" for _, r in df.iterrows()]
 
