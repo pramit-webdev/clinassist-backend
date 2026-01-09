@@ -2,9 +2,8 @@ fastapi
 uvicorn
 openai
 faiss-cpu
-sentence-transformers
+numpy
+pandas
 sqlalchemy
 psycopg2-binary
 python-dotenv
-pandas
-numpy
