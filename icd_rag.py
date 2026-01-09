@@ -26,7 +26,7 @@ class ICD10RAG:
         )
         return [d.embedding for d in resp.data]
 
-def build_from_csv(self, csv_path):
+    def build_from_csv(self, csv_path):
     import pandas as pd
     import re
 
