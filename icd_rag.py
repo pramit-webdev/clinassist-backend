@@ -1,7 +1,6 @@
 import os
 import faiss
 import numpy as np
-import pandas as pd
 from openai import OpenAI
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -27,19 +26,26 @@ class ICD10RAG:
         return [d.embedding for d in resp.data]
 
     def build_from_csv(self, csv_path):
-        # Read ICD-10 file using whitespace splitting
-        df = pd.read_csv(csv_path, sep=r"\s+", engine="python", header=None)
-
         rows = []
-        for _, row in df.iterrows():
-            if len(row) < 4:
-                continue
 
-            code = str(row[2]).strip()
-            desc = str(row[3]).strip()
+        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
 
-            if code and desc:
-                rows.append(f"{code} - {desc}")
+                parts = line.split()
+
+                # must have: chapter, order, ICD-code, description...
+                if len(parts) < 4:
+                    continue
+
+                code = parts[2]
+                description = " ".join(parts[3:])
+
+                rows.append(f"{code} - {description}")
+
+        print(f"Loaded {len(rows)} ICD-10 codes")
 
         vectors = self.embed(rows)
 
