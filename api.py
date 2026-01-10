@@ -13,15 +13,28 @@ from fhir_generator import generate_fhir_bundle
 app = FastAPI()
 rag = ICD10RAG(index_file="icd10.index", texts_file="icd10_texts.npy")
 
+
 class DoctorNote(BaseModel):
     note: str
+
+
+def to_list(x):
+    if x is None:
+        return []
+    if isinstance(x, list):
+        return [str(i) for i in x]
+    return [str(x)]
 
 
 @app.post("/opd/visit")
 def create_visit(note: DoctorNote):
     facts = extract_facts(note.note)
 
-    query = " ".join(facts.get("impression", []) + facts.get("symptoms", []))
+    impression = to_list(facts.get("impression"))
+    symptoms = to_list(facts.get("symptoms"))
+
+    query = " ".join(impression + symptoms)
+
     icd_hits = rag.search(query, k=5)
 
     documents = generate_documents(facts, icd_hits)
