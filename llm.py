@@ -1,6 +1,5 @@
 import os
 from openai import OpenAI
-import json
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -10,7 +9,7 @@ You DO NOT diagnose or suggest treatment.
 
 Extract structured clinical facts from this doctor note.
 
-Return ONLY valid JSON with keys:
+Return a JSON object with keys:
 age, sex, symptoms, findings, impression, care_setting
 """
 
@@ -25,22 +24,33 @@ Produce:
 3. Insurance claim justification
 """
 
+
 def extract_facts(note):
     resp = client.chat.completions.create(
         model="gpt-4o",
+        response_format={"type": "json_object"},  # 🔐 forces valid JSON
         messages=[
-            {"role":"system","content":EXTRACTION_PROMPT},
-            {"role":"user","content":note}
-        ]
+            {"role": "system", "content": EXTRACTION_PROMPT},
+            {"role": "user", "content": note}
+        ],
+        temperature=0
     )
-    return json.loads(resp.choices[0].message.content)
+
+    # SDK already parsed JSON for us
+    return resp.choices[0].message.parsed
+
 
 def generate_documents(facts, icd_codes):
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role":"system","content":GENERATION_PROMPT},
-            {"role":"user","content":f"Facts:\n{facts}\n\nICD Codes:\n{icd_codes}"}
-        ]
+            {"role": "system", "content": GENERATION_PROMPT},
+            {
+                "role": "user",
+                "content": f"Facts:\n{facts}\n\nICD Codes:\n{icd_codes}"
+            }
+        ],
+        temperature=0
     )
-    return resp.choices[0].message.content
+
+    return resp.choices[0].message.content.strip()
