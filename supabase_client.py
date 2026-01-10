@@ -4,7 +4,13 @@ from supabase import create_client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+supabase = None
 
-supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+if SUPABASE_URL and SUPABASE_ANON_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        print("Supabase connected")
+    except Exception as e:
+        print("Supabase connection failed:", e)
+else:
+    print("Supabase disabled (missing env vars)")
