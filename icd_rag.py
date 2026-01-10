@@ -2,7 +2,7 @@ import os
 import faiss
 import numpy as np
 from openai import OpenAI
-from storage_loader import download_from_supabase
+from storage_loader import download_from_hf
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -18,14 +18,14 @@ class ICD10RAG:
         self.index_path = os.path.join(DATA_DIR, index_file)
         self.texts_path = os.path.join(DATA_DIR, texts_file)
 
-        # Download once from Supabase Storage
+        # Download FAISS + text files from HuggingFace if missing
         if not os.path.exists(self.index_path):
-            print("Downloading FAISS index from Supabase Storage...")
-            download_from_supabase(index_file)
+            print("Downloading FAISS index from HuggingFace Hub...")
+            download_from_hf(index_file)
 
         if not os.path.exists(self.texts_path):
-            print("Downloading ICD text file from Supabase Storage...")
-            download_from_supabase(texts_file)
+            print("Downloading ICD text file from HuggingFace Hub...")
+            download_from_hf(texts_file)
 
         # Load FAISS + texts
         print("Loading ICD-10 FAISS index...")
@@ -34,7 +34,7 @@ class ICD10RAG:
 
         print(f"ICD-10 RAG ready — {len(self.texts)} codes loaded")
 
-    # Used only for user queries (tiny input, safe)
+    # Embed user query (small, safe)
     def embed(self, texts):
         resp = client.embeddings.create(
             model="text-embedding-3-small",
