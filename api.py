@@ -1,25 +1,33 @@
 from fastapi import FastAPI
-from db import SessionLocal
-from models import OPDDocument
-from rag import get_relevant_icd
-from llm import generate_documents
+from pydantic import BaseModel
+from icd_rag import ICD10RAG
+from llm import extract_facts, generate_documents
 
 app = FastAPI()
+rag = ICD10RAG(
+    index_file="icd10.index",
+    texts_file="icd10_texts.npy"
+)
 
-@app.post("/process")
-def process_opd(doctor_text: str):
-    icd_candidates = get_relevant_icd(doctor_text)
-    result = generate_documents(doctor_text, icd_candidates)
+class DoctorNote(BaseModel):
+    note: str
 
-    db = SessionLocal()
-    doc = OPDDocument(
-        doctor_text=doctor_text,
-        soap=result["soap"],
-        icd_codes=result["codes"],
-        claim_text=result["claim_text"]
-    )
-    db.add(doc)
-    db.commit()
-    db.close()
+@app.post("/generate")
+def generate(note: DoctorNote):
+    # Step 1 — Extract clinical facts
+    facts = extract_facts(note.note)
 
-    return result
+    # Step 2 — Build ICD query
+    query = " ".join(facts.get("impression", []) + facts.get("symptoms", []))
+
+    # Step 3 — Retrieve ICD-10
+    icd_hits = rag.search(query, k=5)
+
+    # Step 4 — Generate final docs
+    output = generate_documents(facts, icd_hits)
+
+    return {
+        "extracted_facts": facts,
+        "icd_matches": icd_hits,
+        "documents": output
+    }

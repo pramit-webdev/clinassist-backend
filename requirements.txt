@@ -4,6 +4,4 @@ openai
 faiss-cpu
 numpy
 pandas
-sqlalchemy
-psycopg2-binary
 python-dotenv

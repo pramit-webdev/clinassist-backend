@@ -1,35 +1,46 @@
 import os
-import json
 from openai import OpenAI
-from prompts import SYSTEM_PROMPT
+import json
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def generate_documents(doctor_text, icd_candidates):
-    icd_block = "\n".join(icd_candidates)
+EXTRACTION_PROMPT = """
+You are a medical documentation assistant.
+You DO NOT diagnose or suggest treatment.
 
-    prompt = f"""
-Doctor note:
-{doctor_text}
+Extract structured clinical facts from this doctor note.
 
-ICD-10 candidates:
-{icd_block}
-
-Return JSON:
-{{
-  "soap": "...",
-  "codes": [{{"code": "", "description": ""}}],
-  "claim_text": "..."
-}}
+Return ONLY valid JSON with keys:
+age, sex, symptoms, findings, impression, care_setting
 """
 
-    response = client.chat.completions.create(
+GENERATION_PROMPT = """
+You are a clinical documentation generator.
+You must ONLY use the facts and ICD codes provided.
+Do not invent diagnoses or treatments.
+
+Produce:
+1. SOAP Note
+2. ICD-10 Codes list
+3. Insurance claim justification
+"""
+
+def extract_facts(note):
+    resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0
+            {"role":"system","content":EXTRACTION_PROMPT},
+            {"role":"user","content":note}
+        ]
     )
+    return json.loads(resp.choices[0].message.content)
 
-    return json.loads(response.choices[0].message.content)
+def generate_documents(facts, icd_codes):
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role":"system","content":GENERATION_PROMPT},
+            {"role":"user","content":f"Facts:\n{facts}\n\nICD Codes:\n{icd_codes}"}
+        ]
+    )
+    return resp.choices[0].message.content
