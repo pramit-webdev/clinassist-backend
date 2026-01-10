@@ -1,4 +1,5 @@
 import os
+import json
 from openai import OpenAI
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -28,7 +29,7 @@ Produce:
 def extract_facts(note):
     resp = client.chat.completions.create(
         model="gpt-4o",
-        response_format={"type": "json_object"},  # 🔐 forces valid JSON
+        response_format={"type": "json_object"},  # forces valid JSON
         messages=[
             {"role": "system", "content": EXTRACTION_PROMPT},
             {"role": "user", "content": note}
@@ -36,8 +37,8 @@ def extract_facts(note):
         temperature=0
     )
 
-    # SDK already parsed JSON for us
-    return resp.choices[0].message.parsed
+    # In OpenAI SDK v2, JSON is in .content
+    return json.loads(resp.choices[0].message.content)
 
 
 def generate_documents(facts, icd_codes):
