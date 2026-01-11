@@ -9,8 +9,18 @@ from crud import (
     get_patient_visits
 )
 from fhir_generator import generate_fhir_bundle
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # allow all origins (for demo + Postman)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 rag = ICDVectorEngine()
 
 
