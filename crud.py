@@ -4,13 +4,24 @@ from supabase_client import supabase
 
 def require_supabase():
     if supabase is None:
-        raise RuntimeError("Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.")
+        raise RuntimeError(
+            "Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY."
+        )
 
 
-def create_opd_visit(doctor_text, extracted_facts, icd_codes, soap_text, claim_text):
+def create_opd_visit(
+    doctor_text,
+    extracted_facts,
+    icd_codes,
+    soap_text,
+    claim_text,
+    patient_id=None
+):
     require_supabase()
 
-    patient_id = extracted_facts.get("patient_id") or str(uuid.uuid4())
+    # Patient identity MUST come from API, never from LLM
+    if not patient_id:
+        patient_id = str(uuid.uuid4())
 
     record = {
         "id": str(uuid.uuid4()),
@@ -33,11 +44,13 @@ def create_opd_visit(doctor_text, extracted_facts, icd_codes, soap_text, claim_t
 def get_opd_visit(visit_id):
     require_supabase()
 
-    resp = supabase.table("opd_visits") \
-        .select("*") \
-        .eq("id", visit_id) \
-        .single() \
+    resp = (
+        supabase.table("opd_visits")
+        .select("*")
+        .eq("id", visit_id)
+        .single()
         .execute()
+    )
 
     if not resp.data:
         raise KeyError(f"Visit not found: {visit_id}")
@@ -48,9 +61,7 @@ def get_opd_visit(visit_id):
 def list_patients():
     require_supabase()
 
-    resp = supabase.table("opd_visits") \
-        .select("patient_id") \
-        .execute()
+    resp = supabase.table("opd_visits").select("patient_id").execute()
 
     if not resp.data:
         return []
@@ -62,10 +73,12 @@ def list_patients():
 def get_patient_visits(patient_id):
     require_supabase()
 
-    resp = supabase.table("opd_visits") \
-        .select("*") \
-        .eq("patient_id", patient_id) \
-        .order("created_at", desc=True) \
+    resp = (
+        supabase.table("opd_visits")
+        .select("*")
+        .eq("patient_id", patient_id)
+        .order("created_at", desc=True)
         .execute()
+    )
 
     return resp.data or []

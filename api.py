@@ -26,6 +26,7 @@ rag = ICDVectorEngine()
 
 class DoctorNote(BaseModel):
     note: str
+    patient_id: str | None = None
 
 
 def to_list(x):
@@ -54,7 +55,8 @@ def create_visit(note: DoctorNote):
         extracted_facts=facts,
         icd_codes=icd_hits,
         soap_text=documents,
-        claim_text=documents
+        claim_text=documents,
+        patient_id=note.patient_id
     )
 
     return {

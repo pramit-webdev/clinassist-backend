@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime
 
+
 def generate_fhir_bundle(visit):
     bundle_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
-    patient_id = str(uuid.uuid4())
-    encounter_id = str(uuid.uuid4())
+    # CRITICAL: Use real patient_id from database
+    patient_id = visit["patient_id"]
+    encounter_id = visit["id"]   # visit id is the encounter
 
     facts = visit["extracted_facts"]
     icd_codes = visit["icd_codes"]
@@ -14,15 +16,19 @@ def generate_fhir_bundle(visit):
 
     resources = []
 
+    # -------------------------
     # Patient
+    # -------------------------
     resources.append({
         "resourceType": "Patient",
         "id": patient_id,
-        "gender": facts.get("sex", "unknown"),
+        "gender": facts.get("sex", "unknown").lower(),
         "birthDate": None
     })
 
-    # Encounter
+    # -------------------------
+    # Encounter (OPD Visit)
+    # -------------------------
     resources.append({
         "resourceType": "Encounter",
         "id": encounter_id,
@@ -31,7 +37,9 @@ def generate_fhir_bundle(visit):
         "subject": { "reference": f"Patient/{patient_id}" }
     })
 
+    # -------------------------
     # Conditions (ICD-10)
+    # -------------------------
     for entry in icd_codes:
         if "–" in entry:
             icd, desc = entry.split("–", 1)
@@ -45,6 +53,7 @@ def generate_fhir_bundle(visit):
             "resourceType": "Condition",
             "id": str(uuid.uuid4()),
             "subject": { "reference": f"Patient/{patient_id}" },
+            "encounter": { "reference": f"Encounter/{encounter_id}" },
             "code": {
                 "coding": [{
                     "system": "http://hl7.org/fhir/sid/icd-10",
@@ -54,25 +63,33 @@ def generate_fhir_bundle(visit):
             }
         })
 
+    # -------------------------
     # Clinical Impression
+    # -------------------------
     impression = facts.get("impression", [])
     if not isinstance(impression, list):
         impression = [impression]
 
     resources.append({
         "resourceType": "ClinicalImpression",
+        "id": str(uuid.uuid4()),
         "status": "completed",
         "subject": { "reference": f"Patient/{patient_id}" },
+        "encounter": { "reference": f"Encounter/{encounter_id}" },
         "summary": ", ".join(impression)
     })
 
-    # Composition (SOAP)
+    # -------------------------
+    # Composition (SOAP Note)
+    # -------------------------
     resources.append({
         "resourceType": "Composition",
+        "id": str(uuid.uuid4()),
         "status": "final",
         "type": { "text": "OPD Visit" },
         "date": now,
         "subject": { "reference": f"Patient/{patient_id}" },
+        "encounter": { "reference": f"Encounter/{encounter_id}" },
         "section": [
             {
                 "title": "SOAP Note",
@@ -84,6 +101,9 @@ def generate_fhir_bundle(visit):
         ]
     })
 
+    # -------------------------
+    # FHIR Bundle
+    # -------------------------
     return {
         "resourceType": "Bundle",
         "type": "collection",
