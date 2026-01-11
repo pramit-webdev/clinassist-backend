@@ -12,7 +12,6 @@ ZIP_PATH = os.path.join(DATA_DIR, "icd_vectordb.zip")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Download once
 if not os.path.exists(os.path.join(DATA_DIR, "icd_leaf.index")):
     print("Downloading ICD vector DB from Google Drive...")
     gdown.download(
@@ -35,38 +34,54 @@ leaf_meta = np.load(f"{DATA_DIR}/icd_leaf.npy", allow_pickle=True)
 family_meta = np.load(f"{DATA_DIR}/icd_family.npy", allow_pickle=True)
 block_meta = np.load(f"{DATA_DIR}/icd_block.npy", allow_pickle=True)
 
-# Load embedding model
 model = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
-
-def embed(text: str):
-    return model.encode([text], normalize_embeddings=True)
-
+def embed(texts):
+    return model.encode(texts, normalize_embeddings=True).astype("float32")
 
 class ICDVectorEngine:
-    def search(self, query: str, k=5):
-        q = embed(query)
+    def search(self, query, k=5):
+        q = embed([query])
 
-        # 1️⃣ block
+        # 1️⃣ Block search
         _, b_ids = block_index.search(q, 3)
-        blocks = {block_meta[i] for i in b_ids[0]}
+        selected_blocks = {block_meta[i] for i in b_ids[0]}
 
-        # 2️⃣ family
-        fam_candidates = []
-        for i, fam in enumerate(family_meta):
-            if any(fam.startswith(b) for b in blocks):
-                fam_candidates.append(i)
+        # 2️⃣ Filter families
+        valid_families = [
+            fam for fam in family_meta
+            if any(fam.startswith(b) for b in selected_blocks)
+        ]
 
-        fam_vecs = family_index.reconstruct_n(0, family_index.ntotal)
-        fam_subset = fam_vecs[fam_candidates]
+        if not valid_families:
+            valid_families = list(family_meta)
 
-        _, f_ids = faiss.IndexFlatIP(fam_subset.shape[1]).search(q, 5)
-        families = {family_meta[fam_candidates[i]] for i in f_ids[0]}
+        fam_vecs = embed(valid_families)
+        fam_index = faiss.IndexFlatIP(fam_vecs.shape[1])
+        fam_index.add(fam_vecs)
 
-        # 3️⃣ leaf
-        results = []
+        _, fam_ids = fam_index.search(q, 5)
+        chosen_families = {valid_families[i] for i in fam_ids[0]}
+
+        # 3️⃣ Filter leaf codes
+        leaf_texts = []
+        leaf_map = []
+
         for code, desc, fam, blk in leaf_meta:
-            if fam in families:
-                results.append(f"{code} – {desc}")
+            if fam in chosen_families:
+                leaf_texts.append(f"ICD {code}. {desc}.")
+                leaf_map.append((code, desc))
 
-        return results[:k]
+        if not leaf_texts:
+            return []
+
+        leaf_vecs = embed(leaf_texts)
+        leaf_index = faiss.IndexFlatIP(leaf_vecs.shape[1])
+        leaf_index.add(leaf_vecs)
+
+        _, leaf_ids = leaf_index.search(q, k)
+
+        return [
+            f"{leaf_map[i][0]} – {leaf_map[i][1]}"
+            for i in leaf_ids[0]
+        ]
