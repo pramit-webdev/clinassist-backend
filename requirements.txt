@@ -3,6 +3,8 @@ uvicorn
 openai
 faiss-cpu
 numpy
-pandas
 python-dotenv
 supabase
+sentence-transformers
+torch
+gdown

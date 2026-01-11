@@ -1,4 +1,3 @@
-# fhir_generator.py
 import uuid
 from datetime import datetime
 
@@ -9,13 +8,17 @@ def generate_fhir_bundle(visit):
     patient_id = str(uuid.uuid4())
     encounter_id = str(uuid.uuid4())
 
+    facts = visit["extracted_facts"]
+    icd_codes = visit["icd_codes"]
+    soap = visit["soap_text"]
+
     resources = []
 
     # Patient
     resources.append({
         "resourceType": "Patient",
         "id": patient_id,
-        "gender": visit["facts"].get("sex", "unknown"),
+        "gender": facts.get("sex", "unknown"),
         "birthDate": None
     })
 
@@ -29,8 +32,15 @@ def generate_fhir_bundle(visit):
     })
 
     # Conditions (ICD-10)
-    for code in visit["icd_codes"]:
-        icd, desc = code.split(" - ", 1)
+    for entry in icd_codes:
+        if "–" in entry:
+            icd, desc = entry.split("–", 1)
+        elif "-" in entry:
+            icd, desc = entry.split("-", 1)
+        else:
+            icd = entry
+            desc = ""
+
         resources.append({
             "resourceType": "Condition",
             "id": str(uuid.uuid4()),
@@ -38,18 +48,22 @@ def generate_fhir_bundle(visit):
             "code": {
                 "coding": [{
                     "system": "http://hl7.org/fhir/sid/icd-10",
-                    "code": icd,
-                    "display": desc
+                    "code": icd.strip(),
+                    "display": desc.strip()
                 }]
             }
         })
 
     # Clinical Impression
+    impression = facts.get("impression", [])
+    if not isinstance(impression, list):
+        impression = [impression]
+
     resources.append({
         "resourceType": "ClinicalImpression",
         "status": "completed",
         "subject": { "reference": f"Patient/{patient_id}" },
-        "summary": ", ".join(visit["facts"].get("impression", []))
+        "summary": ", ".join(impression)
     })
 
     # Composition (SOAP)
@@ -62,7 +76,10 @@ def generate_fhir_bundle(visit):
         "section": [
             {
                 "title": "SOAP Note",
-                "text": { "status": "generated", "div": visit["soap"] }
+                "text": {
+                    "status": "generated",
+                    "div": soap
+                }
             }
         ]
     })

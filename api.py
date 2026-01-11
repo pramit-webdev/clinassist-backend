@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from icd_rag import ICD10RAG
+from icd_engine import ICDVectorEngine
 from llm import extract_facts, generate_documents
 from crud import (
     create_opd_visit,
@@ -11,7 +11,7 @@ from crud import (
 from fhir_generator import generate_fhir_bundle
 
 app = FastAPI()
-rag = ICD10RAG(index_file="icd10.index", texts_file="icd10_texts.npy")
+rag = ICDVectorEngine()
 
 
 class DoctorNote(BaseModel):
@@ -84,4 +84,11 @@ def visit_download(visit_id: str):
         "soap": visit["soap_text"],
         "icd_codes": visit["icd_codes"],
         "insurance_claim": visit["claim_text"]
+    }
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "icd_engine": "loaded"
     }
