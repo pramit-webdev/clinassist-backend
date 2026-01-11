@@ -6,23 +6,27 @@ def generate_fhir_bundle(visit):
     bundle_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
-    # CRITICAL: Use real patient_id from database
+    # Use real patient identity from DB
     patient_id = visit["patient_id"]
-    encounter_id = visit["id"]   # visit id is the encounter
+    encounter_id = visit["id"]
 
-    facts = visit["extracted_facts"]
-    icd_codes = visit["icd_codes"]
-    soap = visit["soap_text"]
+    facts = visit.get("extracted_facts") or {}
+    icd_codes = visit.get("icd_codes") or []
+    soap = visit.get("soap_text") or ""
 
     resources = []
 
     # -------------------------
     # Patient
     # -------------------------
+    sex = facts.get("sex")
+    if not sex:
+        sex = "unknown"
+
     resources.append({
         "resourceType": "Patient",
         "id": patient_id,
-        "gender": facts.get("sex", "unknown").lower(),
+        "gender": sex.lower(),
         "birthDate": None
     })
 
@@ -66,7 +70,7 @@ def generate_fhir_bundle(visit):
     # -------------------------
     # Clinical Impression
     # -------------------------
-    impression = facts.get("impression", [])
+    impression = facts.get("impression") or []
     if not isinstance(impression, list):
         impression = [impression]
 
