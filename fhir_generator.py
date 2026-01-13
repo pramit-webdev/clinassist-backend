@@ -6,7 +6,7 @@ def generate_fhir_bundle(visit):
     bundle_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
-    # Use real patient identity from DB
+    # Use real longitudinal patient ID
     patient_id = visit["patient_id"]
     encounter_id = visit["id"]
 
@@ -17,17 +17,21 @@ def generate_fhir_bundle(visit):
     resources = []
 
     # -------------------------
-    # Patient
+    # Patient (ABDM-compatible)
     # -------------------------
-    sex = facts.get("sex")
-    if not sex:
-        sex = "unknown"
+    sex = facts.get("sex") or "unknown"
 
     resources.append({
         "resourceType": "Patient",
         "id": patient_id,
         "gender": sex.lower(),
-        "birthDate": None
+        "birthDate": None,
+        "identifier": [
+            {
+                "system": "https://ndhm.gov.in/abha",
+                "value": patient_id
+            }
+        ]
     })
 
     # -------------------------
@@ -38,7 +42,10 @@ def generate_fhir_bundle(visit):
         "id": encounter_id,
         "status": "finished",
         "class": { "code": "AMB" },
-        "subject": { "reference": f"Patient/{patient_id}" }
+        "subject": { "reference": f"Patient/{patient_id}" },
+        "period": {
+            "start": visit.get("created_at", now)
+        }
     })
 
     # -------------------------
@@ -84,7 +91,7 @@ def generate_fhir_bundle(visit):
     })
 
     # -------------------------
-    # Composition (SOAP Note)
+    # Composition (SOAP)
     # -------------------------
     resources.append({
         "resourceType": "Composition",

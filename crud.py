@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from supabase_client import supabase
 
 
@@ -23,14 +24,17 @@ def create_opd_visit(
     if not patient_id:
         patient_id = str(uuid.uuid4())
 
+    visit_id = str(uuid.uuid4())
+
     record = {
-        "id": str(uuid.uuid4()),
+        "id": visit_id,
         "patient_id": patient_id,
         "doctor_text": doctor_text,
         "extracted_facts": extracted_facts,
         "icd_codes": icd_codes,
         "soap_text": soap_text,
-        "claim_text": claim_text
+        "claim_text": claim_text,
+        "created_at": datetime.utcnow().isoformat()
     }
 
     resp = supabase.table("opd_visits").insert(record).execute()
@@ -66,7 +70,6 @@ def list_patients():
     if not resp.data:
         return []
 
-    # Unique patient IDs
     return list({r["patient_id"] for r in resp.data})
 
 
