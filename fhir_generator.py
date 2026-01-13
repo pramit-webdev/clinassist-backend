@@ -19,12 +19,12 @@ def generate_fhir_bundle(visit):
     # -------------------------
     # Patient (ABDM-compatible)
     # -------------------------
-    sex = facts.get("sex") or "unknown"
+    sex = (facts.get("sex") or "unknown").lower()
 
     resources.append({
         "resourceType": "Patient",
         "id": patient_id,
-        "gender": sex.lower(),
+        "gender": sex,
         "birthDate": None,
         "identifier": [
             {
@@ -41,37 +41,37 @@ def generate_fhir_bundle(visit):
         "resourceType": "Encounter",
         "id": encounter_id,
         "status": "finished",
-        "class": { "code": "AMB" },
-        "subject": { "reference": f"Patient/{patient_id}" },
+        "class": {"code": "AMB"},
+        "subject": {"reference": f"Patient/{patient_id}"},
         "period": {
             "start": visit.get("created_at", now)
         }
     })
 
     # -------------------------
-    # Conditions (ICD-10)
+    # Conditions (ICD-10 with scores)
     # -------------------------
     for entry in icd_codes:
-        if "–" in entry:
-            icd, desc = entry.split("–", 1)
-        elif "-" in entry:
-            icd, desc = entry.split("-", 1)
-        else:
-            icd = entry
-            desc = ""
+        code = entry["code"]
+        desc = entry["description"]
+        score = entry["score"]
 
         resources.append({
             "resourceType": "Condition",
             "id": str(uuid.uuid4()),
-            "subject": { "reference": f"Patient/{patient_id}" },
-            "encounter": { "reference": f"Encounter/{encounter_id}" },
+            "subject": {"reference": f"Patient/{patient_id}"},
+            "encounter": {"reference": f"Encounter/{encounter_id}"},
             "code": {
                 "coding": [{
                     "system": "http://hl7.org/fhir/sid/icd-10",
-                    "code": icd.strip(),
-                    "display": desc.strip()
+                    "code": code,
+                    "display": desc
                 }]
-            }
+            },
+            # 🔐 provenance for audits & insurers
+            "note": [{
+                "text": f"AI confidence score: {score}"
+            }]
         })
 
     # -------------------------
@@ -85,8 +85,8 @@ def generate_fhir_bundle(visit):
         "resourceType": "ClinicalImpression",
         "id": str(uuid.uuid4()),
         "status": "completed",
-        "subject": { "reference": f"Patient/{patient_id}" },
-        "encounter": { "reference": f"Encounter/{encounter_id}" },
+        "subject": {"reference": f"Patient/{patient_id}"},
+        "encounter": {"reference": f"Encounter/{encounter_id}"},
         "summary": ", ".join(impression)
     })
 
@@ -97,10 +97,10 @@ def generate_fhir_bundle(visit):
         "resourceType": "Composition",
         "id": str(uuid.uuid4()),
         "status": "final",
-        "type": { "text": "OPD Visit" },
+        "type": {"text": "OPD Visit"},
         "date": now,
-        "subject": { "reference": f"Patient/{patient_id}" },
-        "encounter": { "reference": f"Encounter/{encounter_id}" },
+        "subject": {"reference": f"Patient/{patient_id}"},
+        "encounter": {"reference": f"Encounter/{encounter_id}"},
         "section": [
             {
                 "title": "SOAP Note",

@@ -5,57 +5,73 @@ from openai import OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ===========================
-# FACT EXTRACTION (SAFE)
+# FACT EXTRACTION (CLINICALLY SAFE)
 # ===========================
 
 EXTRACTION_PROMPT = """
-You are a clinical documentation extractor.
+You are a clinical information extraction system.
 
 You DO NOT diagnose.
-You DO NOT suggest treatment.
+You DO NOT infer diseases.
+You DO NOT suggest treatments.
 
-Your job is to extract exactly what the doctor wrote.
+You only extract what the doctor explicitly stated.
 
 Return a JSON object with these fields:
 
 age
 sex
-symptoms: list of patient-reported symptoms
-findings: list of physical exam or lab findings
 
-diagnoses: list of objects:
-- text: the exact diagnosis phrase the doctor used
+symptoms: list of patient-reported symptoms
+findings: list of observed clinical findings
+
+diagnoses: list of objects with:
+- text: the exact disease phrase written by the doctor
 - status: one of ["confirmed", "suspected", "ruled_out"]
 
-impression: short free-text clinical summary
+impression: short summary of the visit WITHOUT adding diagnoses
 care_setting
 
-RULES:
-- Only include something in diagnoses if the doctor explicitly stated it.
-- If doctor says "possible", "likely", "?", "rule out" → status = suspected
+STRICT RULES:
+- Only include something in diagnoses if the doctor explicitly named a disease.
+- If doctor uses words like "possible", "likely", "?", "rule out" → status = suspected
 - If doctor says "no", "not", "ruled out" → status = ruled_out
-- Never invent diseases.
+- Symptoms (pain, fever, cough, diarrhea, etc) must NEVER go into diagnoses.
+- If no diagnosis is stated, diagnoses MUST be an empty list.
 """
 
 # ===========================
-# DOCUMENT GENERATION
+# DOCUMENT GENERATION (ICD LOCKED)
 # ===========================
 
 GENERATION_PROMPT = """
-You are a clinical documentation generator.
+You are a medical documentation generator.
 
-You must ONLY use:
-- The extracted facts
-- The ICD-10 codes provided
+The ICD-10 codes provided are FINAL.
+They were produced by a certified coding engine.
 
-You must NOT invent diagnoses or treatments.
+You MUST:
+- Use ONLY those ICD codes
+- Never add new ICDs
+- Never remove ICDs
+- Never change their meaning
+
+You must NOT invent:
+- diseases
+- diagnoses
+- treatments
+
+You must NOT convert symptoms into diseases.
+
+If no disease ICDs are present, you must treat the visit as symptom-based only.
 
 Produce:
 1. SOAP Note
-2. ICD-10 Codes list
+2. ICD-10 Codes list (copy exactly)
 3. Insurance claim justification
-"""
 
+You must reflect uncertainty when diagnoses are suspected.
+"""
 
 def extract_facts(note):
     resp = client.chat.completions.create(
@@ -78,7 +94,13 @@ def generate_documents(facts, icd_codes):
             {"role": "system", "content": GENERATION_PROMPT},
             {
                 "role": "user",
-                "content": f"Facts:\n{json.dumps(facts, indent=2)}\n\nICD Codes:\n{icd_codes}"
+                "content": f"""
+FACTS:
+{json.dumps(facts, indent=2)}
+
+ICD CODES (locked):
+{json.dumps(icd_codes, indent=2)}
+"""
             }
         ],
         temperature=0

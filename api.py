@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from icd_engine import ICDVectorEngine
 from llm import extract_facts, generate_documents
+from validator import validate_icds
 from crud import (
     create_opd_visit,
     get_opd_visit,
@@ -30,55 +31,67 @@ class DoctorNote(BaseModel):
     patient_id: str | None = None
 
 
-def to_list(x):
+def as_list(x):
     if x is None:
         return []
     if isinstance(x, list):
-        return [str(i) for i in x]
-    return [str(x)]
+        return x
+    return [x]
 
 
 @app.post("/opd/visit")
 def create_visit(note: DoctorNote):
-    # ---------------------------
-    # 1️⃣ Extract facts from doctor note
-    # ---------------------------
+
+    # -------------------------------------------------
+    # 1) Extract clinically safe facts
+    # -------------------------------------------------
     facts = extract_facts(note.note)
 
-    symptoms = to_list(facts.get("symptoms"))
-    diagnoses = facts.get("diagnoses", [])
+    symptoms = as_list(facts.get("symptoms"))
+    diagnoses = as_list(facts.get("diagnoses"))
 
-    icd_hits = []
+    raw_hits = []
 
-    # ---------------------------
-    # 2️⃣ Symptoms → R-codes only
-    # ---------------------------
+    # -------------------------------------------------
+    # 2) Symptoms → R-codes only
+    # -------------------------------------------------
     if symptoms:
-        symptom_query = " ".join(symptoms)
-        icd_hits.extend(
-            rag.search(symptom_query, k=5, mode="symptom")
-        )
+        query = " ".join(symptoms)
+        raw_hits.extend(rag.search(query, k=8, mode="symptom"))
 
-    # ---------------------------
-    # 3️⃣ Only CONFIRMED diagnoses → disease codes
-    # ---------------------------
+    # -------------------------------------------------
+    # 3) Only CONFIRMED diagnoses → disease codes
+    # -------------------------------------------------
     for d in diagnoses:
-        if d.get("status") == "confirmed":
-            icd_hits.extend(
-                rag.search(d["text"], k=5, mode="disease")
-            )
+        if isinstance(d, dict) and d.get("status") == "confirmed":
+            raw_hits.extend(rag.search(d["text"], k=8, mode="disease"))
 
-    # Remove duplicates while preserving order
-    icd_hits = list(dict.fromkeys(icd_hits))
+    # -------------------------------------------------
+    # 4) Deduplicate by ICD code (keep best score)
+    # -------------------------------------------------
+    dedup = {}
+    for item in raw_hits:
+        code = item["code"]
+        if code not in dedup or item["score"] > dedup[code]["score"]:
+            dedup[code] = item
 
-    # ---------------------------
-    # 4️⃣ Generate clinical documents
-    # ---------------------------
+    candidates = list(dedup.values())
+
+    # -------------------------------------------------
+    # 5) Clinical validation layer (LLM)
+    # -------------------------------------------------
+    validation = validate_icds(facts, candidates)
+    icd_hits = validation["approved"]
+    rejected = validation["rejected"]
+
+    # -------------------------------------------------
+    # 6) Generate clinical documents
+    # -------------------------------------------------
     documents = generate_documents(facts, icd_hits)
 
-    # ---------------------------
-    # 5️⃣ Store visit (longitudinal-safe)
-    # ---------------------------
+    # -------------------------------------------------
+    # 7) Persist visit (longitudinal-safe)
+    # -------------------------------------------------
     record = create_opd_visit(
         doctor_text=note.note,
         extracted_facts=facts,
@@ -92,13 +105,14 @@ def create_visit(note: DoctorNote):
         "visit_id": record["id"],
         "patient_id": record["patient_id"],
         "icd_codes": icd_hits,
+        "rejected_icds": rejected,
         "documents": documents
     }
 
 
-# ---------------------------
-# Patient & Visit APIs
-# ---------------------------
+# -------------------------------------------------
+# Patient APIs
+# -------------------------------------------------
 
 @app.get("/opd/patients")
 def patients():
@@ -115,9 +129,9 @@ def visit(visit_id: str):
     return get_opd_visit(visit_id)
 
 
-# ---------------------------
+# -------------------------------------------------
 # FHIR & Export
-# ---------------------------
+# -------------------------------------------------
 
 @app.get("/opd/visit/{visit_id}/fhir")
 def visit_fhir(visit_id: str):
@@ -135,9 +149,9 @@ def visit_download(visit_id: str):
     }
 
 
-# ---------------------------
+# -------------------------------------------------
 # Health
-# ---------------------------
+# -------------------------------------------------
 
 @app.get("/health")
 def health():
